@@ -118,12 +118,19 @@ jobs:
           mkdir -p download
           echo -e "user_code=$(cat $GITHUB_EVENT_PATH | jq -r '.inputs.user_code')" > download/.ms_account
           
-          GAPPS_ARG=""
-          if [[ "${{ inputs.gapps_brand }}" == "MindTheGapps v13.0" ]]; then
-              GAPPS_ARG="--gapps-brand MindTheGapps"
+          # Write GAPPS selection directly to config file if supported
+          GAPPS_VAL="${opts[GAPPS_BRAND,${{ inputs.gapps_brand }}]}"
+          MODEL_VAL="${opts[CUSTOM_MODEL,${{ inputs.custom_model }}]}"
+          
+          if [ -f "./scripts/config.sh" ]; then
+              echo "GAPPS_BRAND=$GAPPS_VAL" >> ./scripts/config.sh
+              echo "CUSTOM_MODEL=$MODEL_VAL" >> ./scripts/config.sh
           fi
 
-          ./scripts/build.sh --arch ${{ inputs.arch }} --release-type ${opts[RELEASE_TYPE,${{ inputs.release_type }}]} --magisk-ver $MAGISK_VER --root-sol $ROOT_SOL $GAPPS_ARG --compress-format ${opts[COMPRESSION,${{ inputs.compression }}]} ${opts[REMOVE_AMAZON,${{ inputs.remove_amazon }}]}
+          export GAPPS_BRAND="$GAPPS_VAL"
+          export CUSTOM_MODEL="$MODEL_VAL"
+
+          ./scripts/build.sh --arch ${{ inputs.arch }} --release-type ${opts[RELEASE_TYPE,${{ inputs.release_type }}]} --magisk-ver $MAGISK_VER --root-sol $ROOT_SOL --compress-format ${opts[COMPRESSION,${{ inputs.compression }}]} ${opts[REMOVE_AMAZON,${{ inputs.remove_amazon }}]}
         shell: bash
 
       - name: Pass Interim Build to Windows 💸
