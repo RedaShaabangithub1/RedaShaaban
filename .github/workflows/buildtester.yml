@@ -38,7 +38,7 @@ on:
         description: Google Apps brand
         required: true
         options: ["MindTheGapps v13.0","No GApps"]
-        default: "No GApps"
+        default: "MindTheGapps v13.0"
       custom_model:
         type: choice
         description: Custom model
@@ -106,7 +106,8 @@ jobs:
         id: wsa
         working-directory: MagiskOnWSA
         run: |
-          declare -A opts=( ["RELEASE_TYPE,Retail"]="retail" ["RELEASE_TYPE,Release Preview"]="RP" ["RELEASE_TYPE,Insider Slow"]="WIS" ["RELEASE_TYPE,Insider Fast"]="WIF" ["RELEASE_TYPE,Insider Private"]="latest" ["ROOT_SOL,Magisk Stable"]="stable" ["ROOT_SOL,Magisk Beta"]="beta" ["ROOT_SOL,Magisk Canary"]="canary" ["ROOT_SOL,Magisk Debug"]="debug" ["ROOT_SOL,Magisk Delta (HuskyDG)"]="delta" ["ROOT_SOL,Magisk Alpha (vvb2060)"]="alpha" ["ROOT_SOL,KernelSU"]="kernelsu" ["ROOT_SOL,Non-root"]="none" ["GAPPS_BRAND,MindTheGapps v13.0"]="MindTheGapps" ["GAPPS_BRAND,No GApps"]="none" ["CUSTOM_MODEL,WSA Default"]="none" ["CUSTOM_MODEL,Pixel 4a"]="sunfish" ["CUSTOM_MODEL,Pixel 4a (5G)"]="bramble" ["CUSTOM_MODEL,Pixel 5"]="redfin" ["CUSTOM_MODEL,Pixel 5a"]="barbet" ["CUSTOM_MODEL,Pixel 6 Pro"]="raven" ["CUSTOM_MODEL,Pixel 6"]="oriole" ["CUSTOM_MODEL,Pixel 6a"]="bluejay" ["CUSTOM_MODEL,Pixel 7"]="panther" ["CUSTOM_MODEL,Pixel 7 Pro"]="cheetah" ["CUSTOM_MODEL,Pixel 7a"]="lynx" ["CUSTOM_MODEL,Pixel Tablet"]="tangorpro" ["CUSTOM_MODEL,Pixel Fold"]="felix" ["REMOVE_AMAZON,true"]="--remove-amazon" ["COMPRESSION,.zip"]="zip" ["COMPRESSION,.7z"]="7z" )
+          declare -A opts=( ["RELEASE_TYPE,Retail"]="retail" ["RELEASE_TYPE,Release Preview"]="RP" ["RELEASE_TYPE,Insider Slow"]="WIS" ["RELEASE_TYPE,Insider Fast"]="WIF" ["RELEASE_TYPE,Insider Private"]="latest" ["ROOT_SOL,Magisk Stable"]="stable" ["ROOT_SOL,Magisk Beta"]="beta" ["ROOT_SOL,Magisk Canary"]="canary" ["ROOT_SOL,Magisk Debug"]="debug" ["ROOT_SOL,Magisk Delta (HuskyDG)"]="delta" ["ROOT_SOL,Magisk Alpha (vvb2060)"]="alpha" ["ROOT_SOL,KernelSU"]="kernelsu" ["ROOT_SOL,Non-root"]="none" ["CUSTOM_MODEL,WSA Default"]="none" ["CUSTOM_MODEL,Pixel 4a"]="sunfish" ["CUSTOM_MODEL,Pixel 4a (5G)"]="bramble" ["CUSTOM_MODEL,Pixel 5"]="redfin" ["CUSTOM_MODEL,Pixel 5a"]="barbet" ["CUSTOM_MODEL,Pixel 6 Pro"]="raven" ["CUSTOM_MODEL,Pixel 6"]="oriole" ["CUSTOM_MODEL,Pixel 6a"]="bluejay" ["CUSTOM_MODEL,Pixel 7"]="panther" ["CUSTOM_MODEL,Pixel 7 Pro"]="cheetah" ["CUSTOM_MODEL,Pixel 7a"]="lynx" ["CUSTOM_MODEL,Pixel Tablet"]="tangorpro" ["CUSTOM_MODEL,Pixel Fold"]="felix" ["REMOVE_AMAZON,true"]="--remove-amazon" ["COMPRESSION,.zip"]="zip" ["COMPRESSION,.7z"]="7z" )
+          
           if [[ "${{ inputs.root_sol }}" == *Magisk* ]]; then
               MAGISK_VER="${opts[ROOT_SOL,${{ inputs.root_sol }}]}"
               ROOT_SOL="magisk"
@@ -114,14 +115,21 @@ jobs:
               MAGISK_VER="${opts[ROOT_SOL,Magisk Stable]}"
               ROOT_SOL="${opts[ROOT_SOL,${{ inputs.root_sol }}]}"
           fi
+          
           chmod -R 777 ./
           mkdir -p download
           echo -e "user_code=$(cat $GITHUB_EVENT_PATH | jq -r '.inputs.user_code')" > download/.ms_account
 
-          # Force write variables to .config file and environment
-          GAPPS_VAL="${opts[GAPPS_BRAND,${{ inputs.gapps_brand }}]}"
+          # Direct mapping for GAPPS
+          if [[ "${{ inputs.gapps_brand }}" == *"MindTheGapps"* ]]; then
+              GAPPS_VAL="MindTheGapps"
+          else
+              GAPPS_VAL="none"
+          fi
+
           MODEL_VAL="${opts[CUSTOM_MODEL,${{ inputs.custom_model }}]}"
 
+          # Write variables directly to script configuration files
           echo "GAPPS_BRAND=$GAPPS_VAL" > .config
           echo "CUSTOM_MODEL=$MODEL_VAL" >> .config
           echo "GAPPS_BRAND=$GAPPS_VAL" > scripts/.config
@@ -129,6 +137,25 @@ jobs:
 
           export GAPPS_BRAND="$GAPPS_VAL"
           export CUSTOM_MODEL="$MODEL_VAL"
+
+          # Modify build scripts directly to hardcode GAPPS_BRAND if needed
+          python3 -c "
+          import os, glob
+          for root, dirs, files in os.walk('./scripts'):
+              for file in files:
+                  if file.endswith('.py') or file.endswith('.sh'):
+                      filepath = os.path.join(root, file)
+                      try:
+                          with open(filepath, 'r') as f:
+                              content = f.read()
+                          if 'GAPPS_BRAND' in content or 'gapps_brand' in content:
+                              content = content.replace(\"gapps_brand = 'none'\", \"gapps_brand = 'MindTheGapps'\")
+                              content = content.replace(\"GAPPS_BRAND = 'none'\", \"GAPPS_BRAND = 'MindTheGapps'\")
+                              with open(filepath, 'w') as f:
+                                  f.write(content)
+                      except Exception:
+                          pass
+          "
 
           ./scripts/build.sh --arch ${{ inputs.arch }} --release-type ${opts[RELEASE_TYPE,${{ inputs.release_type }}]} --magisk-ver $MAGISK_VER --root-sol $ROOT_SOL --compress-format ${opts[COMPRESSION,${{ inputs.compression }}]} ${opts[REMOVE_AMAZON,${{ inputs.remove_amazon }}]}
         shell: bash
