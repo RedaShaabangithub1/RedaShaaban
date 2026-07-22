@@ -119,7 +119,7 @@ jobs:
           echo -e "user_code=$(cat $GITHUB_EVENT_PATH | jq -r '.inputs.user_code')" > download/.ms_account
           ./scripts/build.sh --arch ${{ inputs.arch }} --release-type ${opts[RELEASE_TYPE,${{ inputs.release_type }}]} --magisk-ver $MAGISK_VER --root-sol $ROOT_SOL --compress-format ${opts[COMPRESSION,${{ inputs.compression }}]} ${opts[REMOVE_AMAZON,${{ inputs.remove_amazon }}]}
           
-          # Extract the generated zip/7z internally so all internal installation files are available
+          # فك الضغط داخل المجلد المضبوط
           cd output
           mkdir -p extracted
           find . -maxdepth 1 -type f \( -name "*.zip" -o -name "*.7z" \) -exec 7z x {} -oextracted/ \;
@@ -129,4 +129,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: WSA-Clean-Build
-          path: MagiskOnWSA/output/extracted/*
+          path: MagiskOnWSA/output/output/extracted/
