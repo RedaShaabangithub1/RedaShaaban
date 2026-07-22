@@ -120,8 +120,45 @@ jobs:
           ./scripts/build.sh --arch ${{ inputs.arch }} --release-type ${opts[RELEASE_TYPE,${{ inputs.release_type }}]} --magisk-ver $MAGISK_VER --root-sol $ROOT_SOL --compress-format ${opts[COMPRESSION,${{ inputs.compression }}]} ${opts[REMOVE_AMAZON,${{ inputs.remove_amazon }}]}
         shell: bash
 
-      - name: Upload WSA Package Artifact 📦
+      - name: Pass to Windows 💸
+        uses: actions/cache/save@v4
+        with:
+          path: MagiskOnWSA/output
+          key: wsa-build-temp-cache
+          enableCrossOsArchive: true
+
+  make-pri:
+    name: Merge PRI resources
+    runs-on: windows-latest
+    needs: build
+    steps:
+      - name: Checkout ♻️
+        uses: actions/checkout@v4
+
+      - name: Download built artifact ⌛
+        uses: actions/cache/restore@v4
+        with:
+          path: output
+          key: wsa-build-temp-cache
+          enableCrossOsArchive: true
+
+      - name: Merge language and density resources 🧙🏻‍♂️
+        run: |
+          $artifactFolder = Get-ChildItem -Path "${{ github.workspace }}\output" -Directory | Select-Object -First 1
+          if ("${{ inputs.arch }}" -eq "x64") {
+            (Start-Process pwsh.exe -NoNewWindow -PassThru -Args "-ExecutionPolicy Bypass -File MakePri.ps1" -WorkingDirectory "$($artifactFolder.FullName)").WaitForExit()
+          } else {
+            Copy-Item -Force "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\arm64\makepri.exe" "$($artifactFolder.FullName)"
+          }
+
+      - name: Compress 7-Zip (Windows 11/10) ✔️
+        working-directory: output
+        run: |
+          $dir = Get-ChildItem -Directory | Select-Object -First 1
+          7z a -t7z -mx=6 -m0=LZMA2 -ms=on -mmt=8 -sdel -- "$($dir.Name).7z" "$($dir.Name)\*"
+
+      - name: Upload Complete Artifact 📦
         uses: actions/upload-artifact@v4
         with:
-          name: WSA-Clean-Build
-          path: MagiskOnWSA/output/**
+          name: WSA-Full-Package
+          path: output/*.7z
