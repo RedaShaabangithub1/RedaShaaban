@@ -117,15 +117,15 @@ jobs:
           chmod -R 777 ./
           mkdir -p download
           echo -e "user_code=$(cat $GITHUB_EVENT_PATH | jq -r '.inputs.user_code')" > download/.ms_account
-          
-          # Write GAPPS selection directly to config file if supported
+
+          # Force write variables to .config file and environment
           GAPPS_VAL="${opts[GAPPS_BRAND,${{ inputs.gapps_brand }}]}"
           MODEL_VAL="${opts[CUSTOM_MODEL,${{ inputs.custom_model }}]}"
-          
-          if [ -f "./scripts/config.sh" ]; then
-              echo "GAPPS_BRAND=$GAPPS_VAL" >> ./scripts/config.sh
-              echo "CUSTOM_MODEL=$MODEL_VAL" >> ./scripts/config.sh
-          fi
+
+          echo "GAPPS_BRAND=$GAPPS_VAL" > .config
+          echo "CUSTOM_MODEL=$MODEL_VAL" >> .config
+          echo "GAPPS_BRAND=$GAPPS_VAL" > scripts/.config
+          echo "CUSTOM_MODEL=$MODEL_VAL" >> scripts/.config
 
           export GAPPS_BRAND="$GAPPS_VAL"
           export CUSTOM_MODEL="$MODEL_VAL"
