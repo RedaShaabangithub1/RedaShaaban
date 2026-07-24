@@ -17,6 +17,15 @@
 #
 # Copyright (C) 2024 LSPosed Contributors
 #
+# ============================================================
+# MODIFIED: Allow "Non-root + GApps" combination.
+# The original script forced ROOT_SOL="magisk" whenever GApps
+# was requested, because magiskboot (extracted from the Magisk
+# zip) is needed as a CPIO tool to inject the GApps image into
+# initrd.img. This patch separates "need the magiskboot tool"
+# from "actually install Magisk root", so GApps can be injected
+# without root being installed.
+# ============================================================
 
 if [ ! "$BASH_VERSION" ]; then
     echo "Please do not use sh to run this script, just execute it directly" 1>&2
@@ -175,6 +184,8 @@ Usage:
 Additional Options:
     --offline           Build WSA offline
     --magisk-custom     Install custom Magisk
+    --install-gapps     Install MindTheGapps (works with --root-sol none too)
+    --remove-amazon     Remove Amazon Appstore
     --skip-download-wsa Skip download WSA
     --help              Show this help message and exit
 
@@ -184,6 +195,7 @@ Example:
     ./build.sh --release-type WIS
     ./build.sh --offline --magisk-custom
     ./build.sh --release-type WIF --magisk-custom --magisk-ver release
+    ./build.sh --root-sol none --install-gapps
     "
 }
 
@@ -310,12 +322,15 @@ elif [ "$ROOT_SOL" = "kernelsu" ]; then
     ROOT_SEL="kernelsu"
 fi
 
+# ------------------------------------------------------------
+# MODIFIED BLOCK: no longer force ROOT_SOL to "magisk" when
+# GApps is requested. We only need the magiskboot *tool* (to
+# patch initrd.img via cpio), not an actual Magisk installation.
+# KernelSU + GApps is still unsupported since it doesn't ship
+# magiskboot at all.
+# ------------------------------------------------------------
 if [ "$HAS_GAPPS" ]; then
     case "$ROOT_SOL" in
-        "none")
-            ROOT_SOL="magisk"
-            echo "WARN: Force install Magisk since GApps needs it to mount the file"
-            ;;
         "kernelsu")
             abort "Unsupported combination: Install GApps and KernelSU"
             ;;
@@ -323,6 +338,12 @@ if [ "$HAS_GAPPS" ]; then
             ;;
     esac
 fi
+
+NEED_MAGISKBOOT=""
+if [ "$ROOT_SOL" = "magisk" ] || [ "$HAS_GAPPS" ]; then
+    NEED_MAGISKBOOT=1
+fi
+# ------------------------------------------------------------
 
 # shellcheck disable=SC1091
 [ -f "$PYTHON_VENV_DIR/bin/activate" ] && {
@@ -422,7 +443,10 @@ if [[ "$WSA_MAJOR_VER" -lt 2211 ]]; then
 fi
 if [ -z ${OFFLINE+x} ]; then
     echo "Generating Download Links"
-    if [ "$ROOT_SOL" = "magisk" ]; then
+    # MODIFIED: was `if [ "$ROOT_SOL" = "magisk" ]` -> now also
+    # downloads Magisk when only the magiskboot tool is needed
+    # for GApps injection.
+    if [ "$NEED_MAGISKBOOT" ]; then
         if [ -z ${CUSTOM_MAGISK+x} ]; then
             python3 generateMagiskLink.py "$MAGISK_VER" "$DOWNLOAD_DIR" "$DOWNLOAD_CONF_NAME" || abort
         fi
@@ -449,7 +473,8 @@ if [ -z ${OFFLINE+x} ]; then
     fi
 fi
 declare -A FILES_CHECK_LIST=([xaml_PATH]="$xaml_PATH" [vclibs_PATH]="$vclibs_PATH" [UWPVCLibs_PATH]="$UWPVCLibs_PATH")
-if [ "$ROOT_SOL" = "magisk" ]; then
+# MODIFIED: was `if [ "$ROOT_SOL" = "magisk" ]`
+if [ "$NEED_MAGISKBOOT" ]; then
     FILES_CHECK_LIST+=(["MAGISK_PATH"]="$MAGISK_PATH" ["CUST_PATH"]="$CUST_PATH")
 fi
 if [ "$ROOT_SOL" = "kernelsu" ]; then
@@ -469,7 +494,11 @@ done
 if [ "$FILE_MISSING" ]; then
     abort "Some files are missing"
 fi
-if [ "$ROOT_SOL" = "magisk" ]; then
+# MODIFIED: was `if [ "$ROOT_SOL" = "magisk" ]`
+# We still always extract the Magisk zip (to get magiskboot) when
+# NEED_MAGISKBOOT is set, regardless of whether root will actually
+# be installed.
+if [ "$NEED_MAGISKBOOT" ]; then
     echo "Extracting Magisk"
     if [ -f "$MAGISK_PATH" ]; then
         MAGISK_VERSION_NAME=""
@@ -492,6 +521,11 @@ if [ "$ROOT_SOL" = "magisk" ]; then
     echo -e "done\n"
 fi
 
+# NOT MODIFIED: this block still only runs when the user actually
+# chose "magisk" as their root solution. This is what installs the
+# real root files (magisk64.xz, init.lsp.magisk.rc, etc.) into
+# initrd. It correctly stays skipped for root-sol=none, even if
+# GApps triggered NEED_MAGISKBOOT above.
 if [ "$ROOT_SOL" = "magisk" ]; then
     echo "Integrating Magisk"
     SKIP="#"
@@ -576,6 +610,14 @@ cp ../installer/Install.ps1 "$WORK_DIR/wsa/$ARCH" || abort
 cp ../installer/Run.bat "$WORK_DIR/wsa/$ARCH" || abort
 find "$WORK_DIR/wsa/$ARCH" -maxdepth 1 -mindepth 1 -printf "%P\n" >"$WORK_DIR/wsa/$ARCH/filelist.txt" || abort
 echo -e "done\n"
+
+# TODO: Custom device model (e.g. "Pixel 5" / redfin) is NOT
+# implemented anywhere in this build.sh. If your workflow passes
+# a --custom-model value, it is currently silently ignored. This
+# is a separate feature (usually a Python script that patches
+# build.prop / fingerprint props in system.img) and needs its own
+# script + its own call here. Send that script's contents if you
+# have one, so it can be wired in correctly.
 
 if [[ "$ROOT_SEL" = "none" ]]; then
     name1=""
